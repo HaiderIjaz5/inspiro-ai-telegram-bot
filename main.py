@@ -2,7 +2,7 @@ import os
 import requests
 from io import BytesIO
 from keep_alive import keep_alive
-keep_alive()
+
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.constants import ChatAction
 from telegram.ext import (
@@ -17,6 +17,7 @@ from telegram.ext import (
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 STABILITY_KEY = os.environ["STABILITY_KEY"]
+keep_alive()  # Starts the web server for UptimeRobot
 
 # 🧠 Keep track of each user's selected mode
 user_modes = {}  # user_id: "chat" or "imagine"
@@ -105,27 +106,31 @@ async def imagine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = "https://api.stability.ai/v2beta/stable-image/generate/sd3"
     headers = {
         "Authorization": f"Bearer {STABILITY_KEY}",
-        "Accept": "image/*"
+        "Accept": "image/*"  # ✅ Must be exactly this
     }
 
-    data = {
-        "prompt": prompt,
-        "output_format": "png",
-        "model": "sd3.5-large",  # You can change to sd3.5-large-turbo or sd3.5-medium
-        "aspect_ratio": "1:1",
-        "style_preset": "photographic",
-        "seed": "0"
+    # ✅ Send as multipart/form-data using files=
+    files = {
+        'prompt': (None, prompt),
+        'output_format': (None, 'png'),
+        'model': (None, 'sd3.5-large'),  # You can also try sd3.5-large-turbo
+        'aspect_ratio': (None, '1:1'),
+        'style_preset': (None, 'photographic'),
+        'seed': (None, '0')
     }
 
-    response = requests.post(url, headers=headers, data=data, files={"none": ""})
+    try:
+        response = requests.post(url, headers=headers, files=files)
 
-    if response.status_code == 200:
-        image = BytesIO(response.content)
-        image.name = "generated.png"
-        await loading_msg.delete()
-        await update.message.reply_photo(photo=image)
-    else:
-        await loading_msg.edit_text(f"❌ Stability API Error:\n{response.status_code}\n{response.text}")
+        if response.status_code == 200:
+            image = BytesIO(response.content)
+            image.name = "generated.png"
+            await loading_msg.delete()
+            await update.message.reply_photo(photo=image)
+        else:
+            await loading_msg.edit_text(f"❌ Stability API Error:\n{response.status_code}\n{response.text}")
+    except Exception as e:
+        await loading_msg.edit_text(f"⚠️ Error during image generation: {str(e)}")
 
 # 🛠 Main setup
 if __name__ == "__main__":
